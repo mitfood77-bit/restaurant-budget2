@@ -69,6 +69,27 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
 .note { grid-column: 2; font-size: 11px; color: var(--muted); margin-top: -4px; }
 .btn { margin-top: 12px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
 
+.memo { margin-top: 12px; }
+.memo-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.memo-h .hint { font-weight: 400; }
+.slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.slot { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-width: 0; }
+.slot .load { width: 100%; text-align: left; padding: 8px 26px 8px 10px; background: none; border: 0; cursor: pointer; display: grid; gap: 1px; min-width: 0; border-radius: 10px; }
+.slot .load:disabled { cursor: default; }
+.slot .no { font-size: 11px; color: var(--muted); }
+.slot .sn { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot .dt { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot.empty { border-style: dashed; }
+.slot.empty .sn { color: var(--muted); font-weight: 400; }
+.slot.on { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.slot .del { position: absolute; top: 2px; right: 2px; min-width: 26px; height: 26px; padding: 0 4px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+.slot .del.armed { background: var(--down); color: var(--panel); font-size: 11px; }
+.save { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.save h3 { margin-top: 0; }
+.save input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); }
+.save-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.save-btns button { padding: 8px 0; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 13px; }
+.msg { font-size: 12px; color: var(--up); margin: 6px 0 0; min-height: 1.2em; }
 .foot { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
 .swing { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .swing b { font-size: 15px; }
@@ -133,6 +154,11 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
       <figure class="mini"><figcaption>曜日別売上構成<span>1日あたり・万円</span></figcaption><div class="chart" id="profile"></div></figure>
       <figure class="mini"><figcaption>季節補正<span>線＝1.00（平常）</span></figcaption><div class="chart" id="season"></div></figure>
     </div>
+    <div class="memo" id="memo">
+      <div class="memo-h"><span>メモリー</span><span class="hint">タップで呼び出し</span></div>
+      <div class="slots" id="slots"></div>
+      <p class="msg" id="memo-msg" role="status"></p>
+    </div>
     <details class="edit" id="edit">
       <summary>数値を調整する<span id="changed"></span></summary>
       <h3>1日あたりの売上</h3>
@@ -140,6 +166,11 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
       <h3>季節補正</h3>
       <div class="grid" id="season-inputs"></div>
       <button class="btn" id="reset" type="button">このスタイルの初期値に戻す</button>
+      <div class="save">
+        <h3>今の設定をメモリーに保存</h3>
+        <input id="memo-name" type="text" maxlength="20" placeholder="名前（例：A店 居酒屋）" aria-label="メモリーの名前">
+        <div class="save-btns" id="save-btns"></div>
+      </div>
     </details>
   </section>
 
@@ -406,6 +437,54 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
     }
   }
 
+  // ---------- memory (3 slots, kept in this browser) ----------
+  const MEMO_KEY = 'koyomi-memo-v1';
+  let memo = [null, null, null];
+  try { const m = JSON.parse(localStorage.getItem(MEMO_KEY) || 'null'); if (Array.isArray(m)) memo = [0, 1, 2].map((i) => m[i] || null); } catch (e) {}
+  const persist = () => { try { localStorage.setItem(MEMO_KEY, JSON.stringify(memo)); return true; } catch (e) { return false; } };
+  const ovKey = (ov) => JSON.stringify(Object.keys(ov).sort().map((k) => [k, ov[k]]));
+  const sameAsNow = (s) => s && s.style === S.style && ovKey(s.ov || {}) === ovKey(S.ov);
+  const say = (text, bad) => { const m = $('memo-msg'); m.textContent = text; m.style.color = bad ? 'var(--down)' : 'var(--up)'; };
+  const label = (s) => s.name || (s.style + (Object.keys(s.ov || {}).length ? '・調整あり' : ''));
+  const stamp = (s) => { const d = new Date(s.at); return `${d.getMonth() + 1}/${d.getDate()} ${s.name ? s.style : '保存'}`; };
+  function renderMemo() {
+    const box = $('slots'); box.replaceChildren();
+    memo.forEach((s, i) => {
+      const ok = s && DATA.styles[s.style];
+      const card = el('div', { class: 'slot' + (ok ? '' : ' empty') + (ok && sameAsNow(s) ? ' on' : '') });
+      const b = el('button', { type: 'button', class: 'load', 'aria-label': ok ? `メモリー${i + 1} ${label(s)} を呼び出す` : `メモリー${i + 1} 空き` });
+      b.append(el('span', { class: 'no' }, 'メモリー' + (i + 1)), el('span', { class: 'sn' }, ok ? label(s) : '空き'));
+      if (ok) b.append(el('span', { class: 'dt' }, stamp(s)));
+      if (ok) b.addEventListener('click', () => { S.style = s.style; S.ov = { ...(s.ov || {}) }; render(); say(`メモリー${i + 1}「${label(s)}」を呼び出しました`); });
+      else b.disabled = true;
+      card.append(b);
+      if (ok) {
+        const del = el('button', { type: 'button', class: 'del', 'aria-label': `メモリー${i + 1}を消す` }, '×');
+        let timer;
+        del.addEventListener('click', () => {
+          if (del.classList.contains('armed')) { memo[i] = null; persist(); render(); say(`メモリー${i + 1}を消しました`); return; }
+          del.classList.add('armed'); del.textContent = '消す';
+          timer = setTimeout(() => { del.classList.remove('armed'); del.textContent = '×'; }, 3000);
+        });
+        card.append(del);
+      }
+      box.append(card);
+    });
+    const sb = $('save-btns'); sb.replaceChildren();
+    memo.forEach((s, i) => {
+      const b = el('button', { type: 'button' }, (i + 1) + (s ? 'に上書き' : 'に保存'));
+      b.addEventListener('click', () => {
+        const name = $('memo-name').value.trim();
+        memo[i] = { name, style: S.style, ov: { ...S.ov }, at: Date.now() };
+        const ok = persist();
+        $('memo-name').value = '';
+        render();
+        say(ok ? `メモリー${i + 1}に保存しました` : 'このブラウザでは保存できません（プライベートモードなど）', !ok);
+      });
+      sb.append(b);
+    });
+  }
+
   // ---------- render ----------
   function render() {
     const v = vars();
@@ -447,6 +526,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
     const tot = rows.reduce((a, r) => a + r.cur, 0), totP = rows.reduce((a, r) => a + r.prev, 0);
     const an = $('annual'); an.replaceChildren(document.createTextNode(`年間 ${man(tot)}円（前年 ${man(totP)}円、`), el('span', { class: cls(tot - totP) }, pct(tot / totP - 1)), document.createTextNode('）　年間はほぼ打ち消し合うので、月ごとの振れに注目'));
     drawMonth(rows[S.month - 1], v);
+    renderMemo();
   }
   $('prev').addEventListener('click', () => { S.month = S.month === 1 ? 12 : S.month - 1; render(); });
   $('next').addEventListener('click', () => { S.month = S.month === 12 ? 1 : S.month + 1; render(); });
