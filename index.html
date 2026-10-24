@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>月次予算の暦ブレ ビジュアル版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one phone-width column — premise (style profile) → year at a glance → chosen month explained with a calendar */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --fg: #1d232b; --muted: #5f6873; --line: #e1e4e8; --sel: #eef1f5;
+  --up: #0e8a72; --down: #c4650f;
+  --t-wd: #a3acb8; --t-fri: #8b5cf6; --t-sat: #2f6fd6; --t-sun: #d93a4a; --t-hol: #c2367a; --t-pre: #23336b;
+  --s-hi: #3f4a59; --s-lo: #b9c2ce;
+  --font: system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121417; --panel: #1c1f24; --fg: #e9ebee; --muted: #9aa3ae; --line: #2f343b; --sel: #262b32;
+  --up: #3cc4a3; --down: #f2994a;
+  --t-wd: #6c7684; --t-fri: #a78bfa; --t-sat: #5b9bff; --t-sun: #ff6b78; --t-hol: #f06aa8; --t-pre: #9db0ff;
+  --s-hi: #cfd6df; --s-lo: #4f5966; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121417; --panel: #1c1f24; --fg: #e9ebee; --muted: #9aa3ae; --line: #2f343b; --sel: #262b32;
+  --up: #3cc4a3; --down: #f2994a;
+  --t-wd: #6c7684; --t-fri: #a78bfa; --t-sat: #5b9bff; --t-sun: #ff6b78; --t-hol: #f06aa8; --t-pre: #9db0ff;
+  --s-hi: #cfd6df; --s-lo: #4f5966; color-scheme: dark; }
+
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px; line-height: 1.6; font-variant-numeric: tabular-nums;
+  padding-block: 16px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 720px; margin-inline: auto; display: grid; gap: 14px; }
+h1 { font-size: 22px; font-weight: 700; margin: 0 0 10px; letter-spacing: .02em; }
+h2 { font-size: 16px; font-weight: 700; margin: 0; }
+h3 { font-size: 14px; font-weight: 700; margin: 14px 0 8px; }
+.assume { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+.card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.hint { font-size: 12px; color: var(--muted); }
+.up { color: var(--up); } .down { color: var(--down); }
+button { font: inherit; color: inherit; }
+button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--t-sat); outline-offset: 2px; }
+
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button, .chips button { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.seg button[aria-pressed="true"], .chips button[aria-pressed="true"] { background: var(--fg); color: var(--panel); border-color: var(--fg); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.lead { font-size: 13px; color: var(--muted); margin: 10px 0 12px; }
+
+.premise { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 12px; }
+.mini { margin: 0; padding: 10px 10px 4px; border-radius: 10px; background: var(--sel); min-width: 0; }
+.mini figcaption { font-size: 12px; font-weight: 700; display: flex; justify-content: space-between; }
+.mini figcaption span { font-weight: 400; color: var(--muted); }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font); }
+
+.edit { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.edit summary { cursor: pointer; font-weight: 700; font-size: 14px; padding: 6px 0; }
+.edit summary span { font-weight: 400; font-size: 12px; color: var(--down); margin-left: 6px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 8px 14px; }
+.field { display: grid; grid-template-columns: 4.6rem 1fr; align-items: center; gap: 8px; }
+.field .nm { font-size: 14px; display: flex; align-items: center; gap: 6px; line-height: 1.3; }
+.field .nm small { display: block; font-size: 11px; color: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.dot.pre { background: repeating-linear-gradient(135deg, var(--t-pre) 0 2px, transparent 2px 4px); border: 1px solid var(--t-pre); }
+.step { display: grid; grid-template-columns: 40px 1fr 40px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.step button { border: 0; background: transparent; cursor: pointer; height: 40px; font-size: 18px; }
+.step input { font: inherit; font-size: 16px; text-align: center; border: 0; border-inline: 1px solid var(--line); background: transparent; color: var(--fg); min-width: 0; }
+.step.changed { border-color: var(--down); }
+.note { grid-column: 2; font-size: 11px; color: var(--muted); margin-top: -4px; }
+.btn { margin-top: 12px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+
+.foot { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.swing { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.swing b { font-size: 15px; }
+
+.mhead { display: grid; gap: 4px; }
+.mnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mnav button { width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 18px; }
+.mlabel { font-size: 14px; color: var(--muted); text-align: center; }
+.mlabel b { display: block; font-size: 18px; color: var(--fg); }
+.mbig { display: flex; align-items: baseline; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.mbig .pct { font-size: 44px; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; }
+.mbig .yen { font-size: 17px; font-weight: 600; }
+.mtext { margin: 8px 0 14px; font-size: 14px; text-align: center; }
+
+.contrib { display: grid; gap: 8px; }
+.crow { display: grid; grid-template-columns: 6.6rem 1fr 4.8rem; align-items: center; gap: 8px; font-size: 13px; }
+.crow .lb { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.crow .trk { position: relative; height: 16px; }
+.crow .trk::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line); }
+.crow .bar { position: absolute; top: 0; height: 16px; border-radius: 4px; }
+.crow .bar.pos { left: 50%; background: var(--up); } .crow .bar.neg { right: 50%; background: var(--down); }
+.crow.pre .bar { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.35) 0 3px, transparent 3px 6px); }
+.crow .v { text-align: right; font-weight: 600; }
+.same { text-align: center; font-size: 13px; color: var(--muted); padding: 10px; border: 1px dashed var(--line); border-radius: 10px; }
+.budget { display: flex; justify-content: center; gap: 10px; align-items: baseline; flex-wrap: wrap; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+.budget b { color: var(--fg); font-size: 16px; }
+
+.cals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: 12px; margin-top: 14px; }
+.cal h4 { margin: 0 0 6px; font-size: 13px; text-align: center; }
+.cal .g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal .wh { font-size: 10px; text-align: center; color: var(--muted); }
+.cal .wh.s0 { color: var(--t-sun); } .cal .wh.s6 { color: var(--t-sat); }
+.cal .c { position: relative; aspect-ratio: 1; max-width: 100%; border-radius: 4px; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.cal .c.weekday { background: color-mix(in srgb, var(--t-wd) 14%, var(--panel)); }
+.cal .c.fri { background: color-mix(in srgb, var(--t-fri) 26%, var(--panel)); }
+.cal .c.sat { background: color-mix(in srgb, var(--t-sat) 26%, var(--panel)); }
+.cal .c.sun { background: color-mix(in srgb, var(--t-sun) 24%, var(--panel)); }
+.cal .c.holiday { background: color-mix(in srgb, var(--t-hol) 34%, var(--panel)); font-weight: 700; }
+.cal .c.pre::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 2px; height: 3px; border-radius: 2px; background: var(--t-pre); }
+.cal .cnt { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 8px; font-size: 11px; margin-top: 6px; color: var(--muted); }
+.cal .cnt b { color: var(--fg); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: center; font-size: 11px; color: var(--muted); margin-top: 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend .sw { width: 12px; height: 12px; border-radius: 3px; }
+.legend .sw.prebar { height: 4px; background: var(--t-pre); }
+@media (prefers-reduced-motion: no-preference) { .crow .bar, .mbig .pct { transition: width .25s ease-out; } }
+</style>
+
+</head><body>
+<div class="wrap">
+  <header>
+    <h1>月次予算の暦ブレ</h1>
+    <div class="seg" id="years" role="group" aria-label="見込みを出す年"></div>
+    <p class="assume">※想定値：店舗スタイル別の日販・季節補正は実績ではなく想定の目安です（「標準」のみExcelの変数マスタの値）</p>
+  </header>
+
+  <section class="card" id="style-card">
+    <div class="card-h"><h2>店舗スタイル</h2><span class="hint">この形が暦の効き方を決めます</span></div>
+    <div class="chips" id="styles" role="group" aria-label="店舗スタイル"></div>
+    <p class="lead" id="style-note"></p>
+    <div class="premise">
+      <figure class="mini"><figcaption>1日あたりの売上<span>万円</span></figcaption><div class="chart" id="profile"></div></figure>
+      <figure class="mini"><figcaption>季節補正<span>線＝1.00（平常）</span></figcaption><div class="chart" id="season"></div></figure>
+    </div>
+    <details class="edit" id="edit">
+      <summary>数値を調整する<span id="changed"></span></summary>
+      <h3>1日あたりの売上</h3>
+      <div class="grid" id="daily-inputs"></div>
+      <h3>季節補正</h3>
+      <div class="grid" id="season-inputs"></div>
+      <button class="btn" id="reset" type="button">このスタイルの初期値に戻す</button>
+    </details>
+  </section>
+
+  <section class="card" id="year-card">
+    <div class="card-h"><h2 id="year-title">月別の前年比</h2><span class="hint">棒をタップして月を選ぶ</span></div>
+    <div class="swing" id="swing"></div>
+    <div class="chart" id="yearchart"></div>
+    <p class="foot" id="annual"></p>
+  </section>
+
+  <section class="card" id="month-card">
+    <div class="mhead">
+      <div class="mnav">
+        <button type="button" id="prev" aria-label="前の月">‹</button>
+        <div class="mlabel" id="m-label"></div>
+        <button type="button" id="next" aria-label="次の月">›</button>
+      </div>
+      <div class="mbig"><span class="pct" id="m-pct"></span><span class="yen" id="m-yen"></span></div>
+    </div>
+    <p class="mtext" id="m-text"></p>
+    <div class="contrib" id="contrib"></div>
+    <div class="budget" id="budget"></div>
+    <div class="cals" id="cals"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const DATA = {"holidays": ["2022-01-01", "2022-01-10", "2022-02-11", "2022-02-23", "2022-03-21", "2022-04-29", "2022-05-03", "2022-05-04", "2022-05-05", "2022-07-18", "2022-08-11", "2022-09-19", "2022-09-23", "2022-10-10", "2022-11-03", "2022-11-23", "2023-01-01", "2023-01-02", "2023-01-09", "2023-02-11", "2023-02-23", "2023-03-21", "2023-04-29", "2023-05-03", "2023-05-04", "2023-05-05", "2023-07-17", "2023-08-11", "2023-09-18", "2023-09-23", "2023-10-09", "2023-11-03", "2023-11-23", "2024-01-01", "2024-01-08", "2024-02-11", "2024-02-12", "2024-02-23", "2024-03-20", "2024-04-29", "2024-05-03", "2024-05-04", "2024-05-05", "2024-05-06", "2024-07-15", "2024-08-11", "2024-08-12", "2024-09-16", "2024-09-22", "2024-09-23", "2024-10-14", "2024-11-03", "2024-11-04", "2024-11-23", "2025-01-01", "2025-01-13", "2025-02-11", "2025-02-23", "2025-02-24", "2025-03-20", "2025-04-29", "2025-05-03", "2025-05-04", "2025-05-05", "2025-05-06", "2025-07-21", "2025-08-11", "2025-09-15", "2025-09-23", "2025-10-13", "2025-11-03", "2025-11-23", "2025-11-24", "2026-01-01", "2026-01-12", "2026-02-11", "2026-02-23", "2026-03-20", "2026-04-29", "2026-05-03", "2026-05-04", "2026-05-05", "2026-05-06", "2026-07-20", "2026-08-11", "2026-09-21", "2026-09-22", "2026-09-23", "2026-10-12", "2026-11-03", "2026-11-23", "2027-01-01", "2027-01-11", "2027-02-11", "2027-02-23", "2027-03-21", "2027-03-22", "2027-04-29", "2027-05-03", "2027-05-04", "2027-05-05", "2027-07-19", "2027-08-11", "2027-09-20", "2027-09-23", "2027-10-11", "2027-11-03", "2027-11-23"], "order": ["標準", "郊外ファミリー", "オフィスランチ", "駅前居酒屋", "観光地"], "styles": {"標準": {"daily": {"weekday": 100000, "sat": 130000, "sun": 160000, "holiday": 160000, "fri": 100000, "pre": 0}, "season": {"1": 0.95, "2": 0.88, "3": 1.05, "4": 1.0, "5": 1.0, "6": 0.95, "7": 1.02, "8": 1.15, "9": 1.0, "10": 1.0, "11": 0.92, "12": 1.25}, "notes": {"1": "", "2": "ニッパチ(12,1月の過剰支出）寒さで外出激減", "3": "", "4": "", "5": "", "6": "雨で大きく変動可能性あり", "7": "", "8": "夏休み売上増加", "9": "", "10": "", "11": "最も落ち込む / 年末控え", "12": "宴会見込み"}}, "郊外ファミリー": {"daily": {"weekday": 80000, "fri": 95000, "sat": 180000, "sun": 200000, "holiday": 190000, "pre": 10000}, "season": {"1": 1.0, "2": 0.88, "3": 1.05, "4": 0.95, "5": 1.08, "6": 0.9, "7": 1.02, "8": 1.18, "9": 0.95, "10": 0.98, "11": 0.93, "12": 1.1}, "notes": {"1": "正月の家族来店", "2": "寒さで外出減", "3": "春休み", "4": "新生活で出費控え", "5": "GWの家族外食", "6": "梅雨", "7": "", "8": "夏休み・お盆の帰省", "9": "", "10": "", "11": "年末前の買い控え", "12": "クリスマス・年末"}}, "オフィスランチ": {"daily": {"weekday": 120000, "fri": 110000, "sat": 40000, "sun": 25000, "holiday": 25000, "pre": 5000}, "season": {"1": 0.92, "2": 0.97, "3": 1.05, "4": 1.05, "5": 0.95, "6": 1.0, "7": 1.0, "8": 0.85, "9": 1.0, "10": 1.02, "11": 1.0, "12": 1.1}, "notes": {"1": "正月休み明けまで閑散", "2": "", "3": "歓送迎会", "4": "歓迎会", "5": "GWで出社減", "6": "", "7": "", "8": "お盆休み", "9": "", "10": "", "11": "", "12": "忘年会"}}, "駅前居酒屋": {"daily": {"weekday": 110000, "fri": 200000, "sat": 150000, "sun": 80000, "holiday": 90000, "pre": 80000}, "season": {"1": 0.9, "2": 0.85, "3": 1.12, "4": 1.05, "5": 0.95, "6": 0.93, "7": 1.03, "8": 0.88, "9": 0.95, "10": 1.0, "11": 1.02, "12": 1.3}, "notes": {"1": "新年会はあるが正月休みで出足が遅い", "2": "最閑散期・日数も少ない", "3": "歓送迎会", "4": "歓迎会", "5": "GWで地元客が減る", "6": "梅雨・ボーナス前", "7": "暑気払い・ボーナス", "8": "お盆で会社員が不在", "9": "", "10": "", "11": "忘年会の前倒し", "12": "忘年会のピーク"}}, "観光地": {"daily": {"weekday": 70000, "fri": 90000, "sat": 220000, "sun": 180000, "holiday": 230000, "pre": 40000}, "season": {"1": 0.9, "2": 0.75, "3": 1.0, "4": 1.05, "5": 1.2, "6": 0.8, "7": 1.05, "8": 1.35, "9": 1.0, "10": 1.1, "11": 1.1, "12": 0.85}, "notes": {"1": "三が日以外は閑散", "2": "最閑散期", "3": "春休み", "4": "花見", "5": "GW", "6": "梅雨の閑散期", "7": "夏休みの始まり", "8": "夏休み・お盆のピーク", "9": "シルバーウィーク", "10": "紅葉・行楽", "11": "紅葉", "12": "年末前の閑散"}}}};
+  const TYPES = [
+    { k: 'weekday', name: '月〜木', short: '平', c: '--t-wd' },
+    { k: 'fri', name: '金曜', short: '金', c: '--t-fri' },
+    { k: 'sat', name: '土曜', short: '土', c: '--t-sat' },
+    { k: 'sun', name: '日曜', short: '日', c: '--t-sun' },
+    { k: 'holiday', name: '祝日', short: '祝', c: '--t-hol' },
+    { k: 'pre', name: '祝前日の夜', short: '祝前', c: '--t-pre', extra: true },
+  ];
+  const NOTE = {
+    '標準': 'Excelの変数マスタの値。土日祝がやや強い一般的な店。',
+    '郊外ファミリー': '土日祝が平日の2倍以上。週末と祝日の数でそのまま振れる。',
+    'オフィスランチ': '平日が主役で土日祝は細い。祝日が増える月ほど落ちる。',
+    '駅前居酒屋': '金曜が突出。祝前日の夜も金曜並みに伸びる。',
+    '観光地': '土曜と祝日が平日の3倍前後。連休の並びで大きく振れる。',
+  };
+  const HOL = new Set(DATA.holidays);
+  const YEARS = [...new Set(DATA.holidays.map((d) => Number(d.slice(0, 4))))].sort((a, b) => a - b).slice(1);
+  const now = new Date();
+  const S = {
+    year: YEARS.includes(now.getFullYear()) ? now.getFullYear() : YEARS[YEARS.length - 1],
+    month: now.getMonth() + 1,
+    style: DATA.order[0],
+    ov: {},
+  };
+
+  // ---------- calendar ----------
+  const iso = (y, m, d) => new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10);
+  const dayInfo = (y, m, d) => {
+    const key = iso(y, m, d), dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const type = HOL.has(key) ? 'holiday' : dow === 6 ? 'sat' : dow === 0 ? 'sun' : dow === 5 ? 'fri' : 'weekday';
+    const pre = !HOL.has(key) && HOL.has(iso(y, m, d + 1)) && dow !== 5 && dow !== 6 && !(m === 12 && d === 31);
+    return { d, dow, type, pre };
+  };
+  const monthDays = (y, m) => Array.from({ length: new Date(Date.UTC(y, m, 0)).getUTCDate() }, (_, i) => dayInfo(y, m, i + 1));
+  const counts = (y, m) => {
+    const c = { weekday: 0, fri: 0, sat: 0, sun: 0, holiday: 0, pre: 0 };
+    for (const x of monthDays(y, m)) { c[x.type]++; if (x.pre) c.pre++; }
+    return c;
+  };
+
+  // ---------- model ----------
+  const vars = () => {
+    const st = DATA.styles[S.style];
+    const daily = {}, season = {};
+    for (const t of TYPES) daily[t.k] = S.ov[t.k] ?? st.daily[t.k] ?? (t.k === 'fri' ? st.daily.weekday : 0);
+    for (let m = 1; m <= 12; m++) season[m] = S.ov['s' + m] ?? st.season[m] ?? 1;
+    return { daily, season, base: st, notes: st.notes || {} };
+  };
+  const sales = (c, v, m) => TYPES.reduce((a, t) => a + c[t.k] * v.daily[t.k], 0) * v.season[m];
+  const yearRows = (v) => Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1, c = counts(S.year, m), p = counts(S.year - 1, m);
+    const cur = sales(c, v, m), prev = sales(p, v, m);
+    const parts = TYPES.map((t) => ({ t, d: c[t.k] - p[t.k], yen: (c[t.k] - p[t.k]) * v.daily[t.k] * v.season[m] }))
+      .filter((x) => x.d !== 0 && Math.abs(x.yen) > 0.5).sort((a, b) => Math.abs(b.yen) - Math.abs(a.yen));
+    return { m, c, p, cur, prev, diff: cur - prev, r: prev ? cur / prev - 1 : 0, parts };
+  });
+
+  // ---------- format ----------
+  const sg = (v) => (v > 1e-9 ? '+' : v < -1e-9 ? '−' : '±');
+  const man = (v) => (v / 10000).toLocaleString('ja-JP', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '万';
+  const sman = (v) => sg(v) + man(Math.abs(v));
+  const pct = (v) => sg(v) + Math.abs(v * 100).toFixed(1) + '%';
+  const cls = (v) => (v > 1e-9 ? 'up' : v < -1e-9 ? 'down' : '');
+  const yen = (v) => Math.round(v).toLocaleString('ja-JP');
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, text) => { const e = document.createElement(tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
+  const NS = 'http://www.w3.org/2000/svg';
+  const sv = (tag, attrs = {}, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; };
+  const cvar = (name) => `var(${name})`;
+
+  // ---------- premise charts ----------
+  function drawProfile(v) {
+    const box = $('profile'); box.replaceChildren();
+    const W = Math.max(240, box.clientWidth || 300), H = 150, top = 18, bot = 22;
+    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '曜日別の1日あたり売上' });
+    const defs = sv('defs'); const pat = sv('pattern', { id: 'hatch', width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+    pat.append(sv('rect', { width: 5, height: 5, style: 'fill:var(--panel)' }), sv('line', { x1: 0, y1: 0, x2: 0, y2: 5, style: 'stroke:var(--t-pre);stroke-width:2.4' }));
+    defs.append(pat); svg.append(defs);
+    const max = Math.max(...TYPES.map((t) => v.daily[t.k]), 1);
+    const slot = W / TYPES.length, bw = Math.min(34, slot * 0.62);
+    TYPES.forEach((t, i) => {
+      const val = v.daily[t.k], h = (H - top - bot) * val / max, x = slot * i + (slot - bw) / 2, y = H - bot - h;
+      svg.append(sv('rect', { x, y, width: bw, height: Math.max(h, val > 0 ? 2 : 0), rx: 4, style: t.extra ? 'fill:url(#hatch);stroke:var(--t-pre);stroke-width:1.2' : `fill:${cvar(t.c)}` }));
+      const lab = (t.extra ? '+' : '') + (Math.round(val / 1000) / 10).toString();
+      svg.append(sv('text', { x: x + bw / 2, y: y - 5, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, style: 'fill:var(--fg)' }, lab));
+      svg.append(sv('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 11, style: `fill:${t.k === 'sun' ? 'var(--t-sun)' : t.k === 'sat' ? 'var(--t-sat)' : 'var(--muted)'}` }, t.short));
+    });
+    svg.append(sv('line', { x1: 0, x2: W, y1: H - bot + 0.5, y2: H - bot + 0.5, style: 'stroke:var(--line)' }));
+    box.append(svg);
+  }
+  function drawSeason(v) {
+    const box = $('season'); box.replaceChildren();
+    const W = Math.max(240, box.clientWidth || 300), H = 150, top = 16, bot = 22;
+    const vals = Array.from({ length: 12 }, (_, i) => v.season[i + 1]);
+    const lo = Math.min(0.7, Math.min(...vals) - 0.05), hi = Math.max(1.4, Math.max(...vals) + 0.05);
+    const y = (f) => top + (H - top - bot) * (hi - f) / (hi - lo);
+    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '月別の季節補正' });
+    const slot = W / 12, bw = Math.min(16, slot * 0.6);
+    vals.forEach((f, i) => {
+      const x = slot * i + (slot - bw) / 2, y0 = y(1), y1 = y(f);
+      const up = f >= 1;
+      svg.append(sv('rect', { x, y: Math.min(y0, y1), width: bw, height: Math.max(Math.abs(y1 - y0), 1.5), rx: 3, style: `fill:${up ? 'var(--s-hi)' : 'var(--s-lo)'}` }));
+      if (Math.abs(f - 1) >= 0.05) svg.append(sv('text', { x: x + bw / 2, y: up ? y1 - 4 : y1 + 11, 'text-anchor': 'middle', 'font-size': 9.5, style: 'fill:var(--muted)' }, f.toFixed(2).replace(/^0/, '')));
+      svg.append(sv('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 10.5, style: 'fill:var(--muted)' }, String(i + 1)));
+    });
+    svg.append(sv('line', { x1: 0, x2: W, y1: y(1), y2: y(1), style: 'stroke:var(--muted);stroke-dasharray:3 3;stroke-width:1' }));
+    box.append(svg);
+  }
+
+  // ---------- inputs ----------
+  const fmtYen = (v) => yen(v);
+  const parseYen = (s) => Number(String(s).replace(/[,，円\s]/g, ''));
+  const fmtF = (v) => Number(v).toFixed(2);
+  const parseF = (s) => Number(String(s).replace(/[^\d.]/g, ''));
+  function stepper(key, step, fmt, parse) {
+    const wrap = el('div', { class: 'step' });
+    const minus = el('button', { type: 'button', 'aria-label': '減らす' }, '−');
+    const input = el('input', { inputmode: 'decimal', id: 'in-' + key });
+    const plus = el('button', { type: 'button', 'aria-label': '増やす' }, '+');
+    const set = (v) => { if (isFinite(v) && v >= 0) { S.ov[key] = Number(v.toFixed(6)); render(); } };
+    minus.addEventListener('click', () => set(Number(input.dataset.v) - step));
+    plus.addEventListener('click', () => set(Number(input.dataset.v) + step));
+    input.addEventListener('change', () => { const v = parse(input.value); if (isFinite(v) && v >= 0) set(v); else input.value = fmt(Number(input.dataset.v)); });
+    input.addEventListener('blur', () => { input.value = fmt(Number(input.dataset.v)); });
+    wrap.append(minus, input, plus);
+    wrap.dataset.key = key;
+    return wrap;
+  }
+  function buildInputs() {
+    const di = $('daily-inputs');
+    for (const t of TYPES) {
+      const f = el('div', { class: 'field' });
+      const nm = el('div', { class: 'nm' });
+      nm.append(el('span', { class: 'dot' + (t.extra ? ' pre' : ''), style: t.extra ? '' : `background:${cvar(t.c)}` }));
+      const tx = el('div', {}, t.extra ? '祝前日' : t.name); tx.append(el('small', { 'data-init': t.k })); nm.append(tx);
+      f.append(nm, stepper(t.k, 5000, fmtYen, parseYen));
+      if (t.extra) f.append(el('div', { class: 'note' }, '翌日が祝日の月〜木・日曜の夜に足す額（金・土は対象外）'));
+      di.append(f);
+    }
+    const si = $('season-inputs');
+    for (let m = 1; m <= 12; m++) {
+      const f = el('div', { class: 'field' });
+      const nm = el('div', { class: 'nm' }); const tx = el('div', {}, m + '月'); tx.append(el('small', { 'data-init': 's' + m })); nm.append(tx);
+      f.append(nm, stepper('s' + m, 0.01, fmtF, parseF), el('div', { class: 'note', 'data-note': String(m) }));
+      si.append(f);
+    }
+  }
+  $('reset').addEventListener('click', () => { S.ov = {}; render(); });
+
+  // ---------- year chart ----------
+  function drawYear(rows) {
+    const box = $('yearchart'); box.replaceChildren();
+    const W = Math.max(280, box.clientWidth || 320), H = 200, top = 18, bot = 24;
+    const lim = Math.max(0.02, ...rows.map((r) => Math.abs(r.r)));
+    const mid = top + (H - top - bot) / 2, half = (H - top - bot) / 2 - 12;
+    const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${S.year}年の月別前年比` });
+    const slot = W / 12, bw = Math.min(22, slot * 0.62);
+    rows.forEach((r, i) => {
+      const x0 = slot * i, x = x0 + (slot - bw) / 2, sel = r.m === S.month;
+      if (sel) svg.append(sv('rect', { x: x0 + 1, y: 2, width: slot - 2, height: H - 4, rx: 8, style: 'fill:var(--sel);stroke:var(--fg);stroke-width:1.2' }));
+      const h = half * Math.abs(r.r) / lim;
+      if (Math.abs(r.r) > 1e-9) svg.append(sv('rect', { x, y: r.r > 0 ? mid - h : mid, width: bw, height: Math.max(h, 2), rx: 4, style: `fill:${r.r > 0 ? 'var(--up)' : 'var(--down)'}` }));
+      const t = (r.r > 0 ? '+' : r.r < 0 ? '−' : '') + Math.abs(r.r * 100).toFixed(1);
+      svg.append(sv('text', { x: x0 + slot / 2, y: r.r >= 0 ? mid - h - 5 : mid + h + 12, 'text-anchor': 'middle', 'font-size': slot < 30 ? 9.5 : 11, 'font-weight': sel ? 700 : 500, style: `fill:${r.r > 1e-9 ? 'var(--up)' : r.r < -1e-9 ? 'var(--down)' : 'var(--muted)'}` }, Math.abs(r.r) < 1e-9 ? '0' : t));
+      svg.append(sv('text', { x: x0 + slot / 2, y: H - 7, 'text-anchor': 'middle', 'font-size': 11.5, 'font-weight': sel ? 700 : 400, style: `fill:${sel ? 'var(--fg)' : 'var(--muted)'}` }, r.m + (slot >= 34 ? '月' : '')));
+      const hit = sv('rect', { x: x0, y: 0, width: slot, height: H, style: 'fill:transparent;cursor:pointer', tabindex: 0, role: 'button', 'aria-label': `${r.m}月 前年比 ${pct(r.r)}` });
+      const pick = () => { S.month = r.m; render(); };
+      hit.addEventListener('click', pick);
+      hit.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      svg.append(hit);
+    });
+    svg.append(sv('line', { x1: 0, x2: W, y1: mid, y2: mid, style: 'stroke:var(--muted);stroke-width:1;pointer-events:none' }));
+    box.append(svg);
+  }
+
+  // ---------- month detail ----------
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  function calendar(y, m, title, c, diff) {
+    const wrap = el('div', { class: 'cal' });
+    wrap.append(el('h4', {}, title));
+    const g = el('div', { class: 'g' });
+    WD.forEach((w, i) => g.append(el('div', { class: 'wh s' + i }, w)));
+    const days = monthDays(y, m);
+    for (let i = 0; i < days[0].dow; i++) g.append(el('div'));
+    for (const x of days) {
+      const name = x.type === 'holiday' ? '祝日' : TYPES.find((t) => t.k === x.type).name;
+      g.append(el('div', { class: `c ${x.type}${x.pre ? ' pre' : ''}`, title: `${m}/${x.d} ${name}${x.pre ? '・祝前日' : ''}` }, String(x.d)));
+    }
+    wrap.append(g);
+    const cnt = el('div', { class: 'cnt' });
+    for (const t of TYPES) {
+      const s = el('span'); s.append(document.createTextNode(t.short), el('b', {}, String(c[t.k])));
+      if (diff && diff[t.k]) s.append(el('b', { class: diff[t.k] > 0 ? 'up' : 'down' }, `(${sg(diff[t.k])}${Math.abs(diff[t.k])})`));
+      cnt.append(s);
+    }
+    wrap.append(cnt);
+    return wrap;
+  }
+  function drawMonth(r, v) {
+    $('m-label').replaceChildren(el('b', {}, `${S.year}年${r.m}月`), document.createTextNode(`前年同月比（${S.style}）`));
+    const p = $('m-pct'); p.textContent = pct(r.r); p.className = 'pct ' + cls(r.r);
+    const y = $('m-yen'); y.textContent = sman(r.diff) + '円'; y.className = 'yen ' + cls(r.diff);
+    const words = r.parts.filter((x) => !x.t.extra).map((x) => `${x.t.name}が${Math.abs(x.d)}日${x.d > 0 ? '増え' : '減り'}`);
+    const pre = r.parts.find((x) => x.t.extra);
+    if (pre) words.push(`祝前日の夜が${Math.abs(pre.d)}回${pre.d > 0 ? '増え' : '減り'}`);
+    $('m-text').textContent = r.parts.length ? words.join('、') + 'ます。' : '曜日・祝日の並びは前年と同じ数です。暦による増減はありません。';
+
+    const box = $('contrib'); box.replaceChildren();
+    if (!r.parts.length) box.append(el('div', { class: 'same' }, '暦の差　なし'));
+    const lim = Math.max(...r.parts.map((x) => Math.abs(x.yen)), 1);
+    for (const x of r.parts) {
+      const row = el('div', { class: 'crow' + (x.t.extra ? ' pre' : '') });
+      const lb = el('div', { class: 'lb' });
+      lb.append(el('span', { class: 'dot' + (x.t.extra ? ' pre' : ''), style: x.t.extra ? '' : `background:${cvar(x.t.c)}` }), document.createTextNode(`${x.t.extra ? '祝前夜' : x.t.name} ${sg(x.d)}${Math.abs(x.d)}`));
+      const trk = el('div', { class: 'trk' });
+      const bar = el('div', { class: 'bar ' + (x.yen > 0 ? 'pos' : 'neg') }); bar.style.width = (Math.abs(x.yen) / lim * 50) + '%';
+      trk.append(bar);
+      row.append(lb, trk, el('div', { class: 'v ' + cls(x.yen) }, sman(x.yen)));
+      box.append(row);
+    }
+    const b = $('budget'); b.replaceChildren();
+    b.append(document.createTextNode(`月予算　前年 `), el('b', {}, man(r.prev)), document.createTextNode(' → 今年 '), el('b', { class: cls(r.diff) }, man(r.cur)));
+
+    const diff = {}; for (const t of TYPES) diff[t.k] = r.c[t.k] - r.p[t.k];
+    $('cals').replaceChildren(calendar(S.year - 1, r.m, `${S.year - 1}年${r.m}月（前年）`, r.p), calendar(S.year, r.m, `${S.year}年${r.m}月`, r.c, diff));
+  }
+  function legend() {
+    const lg = $('legend'); lg.replaceChildren();
+    for (const t of TYPES) {
+      const s = el('span');
+      if (t.extra) s.append(el('span', { class: 'sw prebar' }), document.createTextNode('祝前日（下線）'));
+      else s.append(el('span', { class: 'sw', style: `background:color-mix(in srgb, ${cvar(t.c)} 40%, var(--panel))` }), document.createTextNode(t.name));
+      lg.append(s);
+    }
+  }
+
+  // ---------- render ----------
+  function render() {
+    const v = vars();
+    const yb = $('years'); yb.replaceChildren();
+    for (const y of YEARS) {
+      const b = el('button', { type: 'button', 'aria-pressed': String(y === S.year) }, y + '年' + (y === now.getFullYear() ? '（今年）' : y === now.getFullYear() + 1 ? '（来年）' : ''));
+      b.addEventListener('click', () => { S.year = y; render(); });
+      yb.append(b);
+    }
+    const sb = $('styles'); sb.replaceChildren();
+    for (const s of DATA.order) {
+      const b = el('button', { type: 'button', 'aria-pressed': String(s === S.style) }, s);
+      b.addEventListener('click', () => { if (s !== S.style) { S.style = s; S.ov = {}; render(); } });
+      sb.append(b);
+    }
+    $('style-note').textContent = NOTE[S.style] || '';
+    drawProfile(v); drawSeason(v);
+
+    for (const st of document.querySelectorAll('.step')) {
+      const k = st.dataset.key, isS = k.startsWith('s') && k.length <= 3 && k !== 'sat' && k !== 'sun';
+      const val = isS ? v.season[Number(k.slice(1))] : v.daily[k];
+      const base = isS ? (v.base.season[Number(k.slice(1))] ?? 1) : (v.base.daily[k] ?? (k === 'fri' ? v.base.daily.weekday : 0));
+      const input = st.querySelector('input'); input.dataset.v = String(val);
+      if (input !== document.activeElement) input.value = isS ? fmtF(val) : fmtYen(val);
+      st.classList.toggle('changed', Math.abs(val - base) > 1e-9);
+      const init = document.querySelector(`[data-init="${k}"]`); if (init) init.textContent = '初期 ' + (isS ? fmtF(base) : fmtYen(base));
+    }
+    for (const n of document.querySelectorAll('[data-note]')) n.textContent = v.notes[Number(n.dataset.note)] || '';
+    const nCh = Object.keys(S.ov).length;
+    $('changed').textContent = nCh ? `${nCh}項目を変更中` : '';
+
+    const rows = yearRows(v);
+    $('year-title').textContent = `${S.year}年 月別の前年比（%）`;
+    const mx = rows.reduce((a, b) => (b.r > a.r ? b : a)), mn = rows.reduce((a, b) => (b.r < a.r ? b : a));
+    const sw = $('swing'); sw.replaceChildren();
+    const item = (label, r) => { const s = el('span'); s.append(document.createTextNode(label + ' '), el('b', { class: cls(r.r) }, `${r.m}月 ${pct(r.r)}`)); return s; };
+    sw.append(item('最大の上振れ', mx), item('最大の下振れ', mn));
+    drawYear(rows);
+    const tot = rows.reduce((a, r) => a + r.cur, 0), totP = rows.reduce((a, r) => a + r.prev, 0);
+    const an = $('annual'); an.replaceChildren(document.createTextNode(`年間 ${man(tot)}円（前年 ${man(totP)}円、`), el('span', { class: cls(tot - totP) }, pct(tot / totP - 1)), document.createTextNode('）　年間はほぼ打ち消し合うので、月ごとの振れに注目'));
+    drawMonth(rows[S.month - 1], v);
+  }
+  $('prev').addEventListener('click', () => { S.month = S.month === 1 ? 12 : S.month - 1; render(); });
+  $('next').addEventListener('click', () => { S.month = S.month === 12 ? 1 : S.month + 1; render(); });
+
+  buildInputs(); legend(); render();
+  let t; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(render, 120); });
+  ro.observe(document.querySelector('.wrap'));
+})();
+</script>
+
+</body></html>
